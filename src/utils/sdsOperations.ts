@@ -4,7 +4,6 @@
  */
 
 import { SDSType, SDSState, SDS_MAX_LENGTH, OperationParams } from '@/types/sds';
-import { AnimationStep } from '@/types/animation';
 
 /**
  * 根据字符串长度确定合适的SDS类型

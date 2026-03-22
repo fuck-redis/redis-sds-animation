@@ -1,208 +1,403 @@
 /**
- * SDS Structure Visualization Component
- * 展示SDS的完整结构：头部信息和缓冲区
+ * SDS Structure Visualization Canvas
+ * 可拖拽、可缩放、可叠加分镜标注
+ * 使用 framer-motion 实现流畅动画
  */
 
-import { motion } from 'framer-motion';
-import { HelpCircle } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Move, Search, ZoomIn, ZoomOut } from 'lucide-react';
 import { SDSState } from '@/types/sds';
 import { useStore } from '@/store/useStore';
+import {
+  AnimatedCell,
+  AnimatedArrow,
+  AnimatedAnnotation,
+} from './AnimatedElements';
 
 interface SDSStructureProps {
   sds: SDSState;
 }
 
-// 字段提示信息
-const FIELD_TOOLTIPS = {
-  len: '已使用的字符串长度（不包括终止符）。Redis可以在O(1)时间复杂度内获取字符串长度，无需像C字符串那样遍历整个字符串。',
-  alloc: '已分配的总容量（不包括头部和终止符）。当字符串长度增长时，Redis会预分配额外的空间以减少内存重新分配的次数。',
-  flags: 'SDS类型标识，用于优化不同长度字符串的内存使用。Redis根据字符串长度选择不同的头部结构（TYPE_5/8/16/32/64），以节省内存空间。'
+interface Point {
+  x: number;
+  y: number;
+}
+
+interface HeaderBox {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+const HEADER_BOXES: Record<'len' | 'alloc' | 'flags', HeaderBox> = {
+  len: { x: 120, y: 64, width: 190, height: 88 },
+  alloc: { x: 360, y: 64, width: 190, height: 88 },
+  flags: { x: 600, y: 64, width: 190, height: 88 },
 };
+
+const CELL_WIDTH = 62;
+const CELL_HEIGHT = 44;
+const CELL_GAP_X = 14;
+const CELL_GAP_Y = 32;
+const BUFFER_START_X = 80;
+const BUFFER_START_Y = 230;
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
+function parseBufferTarget(target: string): number | null {
+  const match = target.match(/^buf\[(\d+)\]$/);
+  if (!match) return null;
+  return Number(match[1]);
+}
+
+function computeCellsPerRow(total: number): number {
+  if (total <= 12) return total;
+  if (total <= 24) return 12;
+  return 16;
+}
 
 export function SDSStructure({ sds }: SDSStructureProps) {
   const { animationState } = useStore();
   const currentStep = animationState.steps[animationState.currentStep];
-  
-  // 检查当前动画步骤是否高亮某个字段
-  const isHighlighted = (target: string) => {
-    return currentStep?.target === target && currentStep?.type === 'highlight';
+
+  const wrapperRef = useRef<HTMLDivElement | null>(null);
+  const [viewport, setViewport] = useState({ width: 1000, height: 640 });
+
+  const [transform, setTransform] = useState({ x: 0, y: 0, scale: 1 });
+  const [dragging, setDragging] = useState(false);
+  const dragRef = useRef<{ startX: number; startY: number; originX: number; originY: number } | null>(null);
+  const interactedRef = useRef(false);
+
+  const cellsPerRow = useMemo(() => computeCellsPerRow(sds.buf.length), [sds.buf.length]);
+  const rowCount = useMemo(() => Math.ceil(sds.buf.length / cellsPerRow), [cellsPerRow, sds.buf.length]);
+
+  const contentSize = useMemo(() => {
+    const width = Math.max(920, BUFFER_START_X + cellsPerRow * (CELL_WIDTH + CELL_GAP_X) + 120);
+    const height = Math.max(560, BUFFER_START_Y + rowCount * (CELL_HEIGHT + CELL_GAP_Y) + 120);
+    return { width, height };
+  }, [cellsPerRow, rowCount]);
+
+  useEffect(() => {
+    const observeTarget = wrapperRef.current;
+    if (!observeTarget) return;
+
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (!entry) return;
+      setViewport({
+        width: entry.contentRect.width,
+        height: entry.contentRect.height,
+      });
+    });
+
+    observer.observe(observeTarget);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (interactedRef.current) return;
+    setTransform({
+      x: (viewport.width - contentSize.width) / 2,
+      y: (viewport.height - contentSize.height) / 2,
+      scale: 1,
+    });
+  }, [contentSize.height, contentSize.width, viewport.height, viewport.width]);
+
+  useEffect(() => {
+    if (!dragging) return;
+
+    const onMove = (event: MouseEvent) => {
+      const state = dragRef.current;
+      if (!state) return;
+      setTransform((prev) => ({
+        ...prev,
+        x: state.originX + (event.clientX - state.startX),
+        y: state.originY + (event.clientY - state.startY),
+      }));
+    };
+
+    const onUp = () => {
+      setDragging(false);
+      dragRef.current = null;
+    };
+
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+
+    return () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+  }, [dragging]);
+
+  const cellPosition = (index: number): Point => {
+    const col = index % cellsPerRow;
+    const row = Math.floor(index / cellsPerRow);
+    return {
+      x: BUFFER_START_X + col * (CELL_WIDTH + CELL_GAP_X),
+      y: BUFFER_START_Y + row * (CELL_HEIGHT + CELL_GAP_Y),
+    };
   };
-  
-  // 检查是否正在更新某个字段
-  const isUpdating = (target: string) => {
-    return currentStep?.target === target && currentStep?.type === 'update';
+
+  const getTargetCenter = (target: string): Point => {
+    if (target === 'len' || target === 'alloc' || target === 'flags') {
+      const box = HEADER_BOXES[target];
+      return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+    }
+
+    if (target === 'header') {
+      return { x: 450, y: 110 };
+    }
+
+    if (target === 'buffer') {
+      return { x: BUFFER_START_X + 140, y: BUFFER_START_Y + 20 };
+    }
+
+    const index = parseBufferTarget(target);
+    if (index !== null && index < sds.buf.length) {
+      const pos = cellPosition(index);
+      return { x: pos.x + CELL_WIDTH / 2, y: pos.y + CELL_HEIGHT / 2 };
+    }
+
+    return { x: contentSize.width / 2, y: contentSize.height / 2 };
   };
-  
+
+  const isHeaderActive = (name: 'len' | 'alloc' | 'flags') => {
+    if (!currentStep) return false;
+    if (currentStep.target === name) return true;
+    if (currentStep.target === 'header' && (currentStep.type === 'highlight' || currentStep.type === 'calculation')) {
+      return true;
+    }
+    return false;
+  };
+
+  const isCellActive = (index: number): boolean => {
+    if (!currentStep) return false;
+    return currentStep.target === `buf[${index}]`;
+  };
+
+  const variables = currentStep?.debug?.variables ?? {};
+
   return (
-    <div className="bg-white rounded-lg shadow-lg p-6">
-      {/* 头部信息 */}
-      <div className="mb-8">
-        <h3 className="text-lg font-semibold mb-4 text-gray-700">SDS Header</h3>
-        <div className="grid grid-cols-3 gap-4">
-          {/* len 字段 */}
-          <motion.div
-            className={`border-2 rounded-lg p-4 text-center transition-all relative ${
-              isHighlighted('len') || isUpdating('len')
-                ? 'border-yellow-400 bg-yellow-50 shadow-lg scale-105'
-                : 'border-gray-300 bg-gray-50'
-            }`}
-            animate={isUpdating('len') ? { scale: [1, 1.1, 1] } : {}}
-            transition={{ duration: 0.3 }}
+    <section className="bg-white rounded-lg shadow-md border border-slate-200 p-3 h-full flex flex-col">
+      <div className="flex items-center justify-between gap-2 mb-2">
+        <h3 className="text-sm font-semibold text-slate-800">SDS 可视化画布</h3>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            className="canvas-tool-btn"
+            onClick={() => {
+              interactedRef.current = true;
+              setTransform((prev) => ({ ...prev, scale: clamp(prev.scale * 1.1, 0.4, 3) }));
+            }}
+            title="放大"
           >
-            <div className="flex items-center justify-center gap-1 text-sm text-gray-600 mb-1 group relative">
-              <span>len</span>
-              <HelpCircle size={14} className="text-gray-400 cursor-help" />
-              <div className="invisible group-hover:visible absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 w-64 bg-gray-800 text-white text-xs rounded-lg p-3 z-10 shadow-xl">
-                <div className="relative">
-                  {FIELD_TOOLTIPS.len}
-                  <div className="absolute -bottom-2 left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-800"></div>
-                </div>
-              </div>
-            </div>
-            <div className="text-2xl font-bold text-gray-800">{sds.len}</div>
-            <div className="text-xs text-gray-500 mt-1">已使用长度</div>
-          </motion.div>
-          
-          {/* alloc 字段 */}
-          <motion.div
-            className={`border-2 rounded-lg p-4 text-center transition-all relative ${
-              isHighlighted('alloc') || isUpdating('alloc')
-                ? 'border-yellow-400 bg-yellow-50 shadow-lg scale-105'
-                : 'border-gray-300 bg-gray-50'
-            }`}
-            animate={isUpdating('alloc') ? { scale: [1, 1.1, 1] } : {}}
-            transition={{ duration: 0.3 }}
+            <ZoomIn size={14} />
+          </button>
+          <button
+            type="button"
+            className="canvas-tool-btn"
+            onClick={() => {
+              interactedRef.current = true;
+              setTransform((prev) => ({ ...prev, scale: clamp(prev.scale / 1.1, 0.4, 3) }));
+            }}
+            title="缩小"
           >
-            <div className="flex items-center justify-center gap-1 text-sm text-gray-600 mb-1 group relative">
-              <span>alloc</span>
-              <HelpCircle size={14} className="text-gray-400 cursor-help" />
-              <div className="invisible group-hover:visible absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 w-64 bg-gray-800 text-white text-xs rounded-lg p-3 z-10 shadow-xl">
-                <div className="relative">
-                  {FIELD_TOOLTIPS.alloc}
-                  <div className="absolute -bottom-2 left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-800"></div>
-                </div>
-              </div>
-            </div>
-            <div className="text-2xl font-bold text-gray-800">{sds.alloc}</div>
-            <div className="text-xs text-gray-500 mt-1">已分配容量</div>
-          </motion.div>
-          
-          {/* flags 字段 */}
-          <motion.div
-            className={`border-2 rounded-lg p-4 text-center transition-all relative ${
-              isHighlighted('flags')
-                ? 'border-yellow-400 bg-yellow-50 shadow-lg scale-105'
-                : 'border-gray-300 bg-gray-50'
-            }`}
+            <ZoomOut size={14} />
+          </button>
+          <button
+            type="button"
+            className="canvas-tool-btn"
+            onClick={() => {
+              interactedRef.current = false;
+              setTransform({
+                x: (viewport.width - contentSize.width) / 2,
+                y: (viewport.height - contentSize.height) / 2,
+                scale: 1,
+              });
+            }}
+            title="重置视图"
           >
-            <div className="flex items-center justify-center gap-1 text-sm text-gray-600 mb-1 group relative">
-              <span>flags</span>
-              <HelpCircle size={14} className="text-gray-400 cursor-help" />
-              <div className="invisible group-hover:visible absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 w-64 bg-gray-800 text-white text-xs rounded-lg p-3 z-10 shadow-xl">
-                <div className="relative">
-                  {FIELD_TOOLTIPS.flags}
-                  <div className="absolute -bottom-2 left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-800"></div>
-                </div>
-              </div>
-            </div>
-            <div className="text-lg font-bold text-gray-800">{sds.type}</div>
-            <div className="text-xs text-gray-500 mt-1">SDS类型</div>
-          </motion.div>
+            <Search size={14} />
+          </button>
         </div>
       </div>
-      
-      {/* 缓冲区可视化 */}
-      <div>
-        <h3 className="text-lg font-semibold mb-4 text-gray-700">
-          Buffer - {sds.alloc + 1} bytes allocated
-        </h3>
-        <div className="relative">
-          {/* 索引标尺 */}
-          <div className="flex mb-1">
-            {sds.buf.map((_, index) => (
-              <div
-                key={`index-${index}`}
-                className="flex-1 text-center text-xs text-gray-400 font-mono"
-                style={{ minWidth: '40px', maxWidth: '60px' }}
-              >
-                {index}
-              </div>
-            ))}
+
+      <div className="grid grid-cols-3 gap-2 text-xs mb-2">
+        <div className="bg-emerald-50 border border-emerald-200 rounded px-2 py-1">
+          <div className="text-slate-500">当前阶段</div>
+          <div className="font-semibold text-slate-800">{currentStep?.phase || '等待执行'}</div>
+        </div>
+        <div className="bg-cyan-50 border border-cyan-200 rounded px-2 py-1">
+          <div className="text-slate-500">步骤</div>
+          <div className="font-semibold text-slate-800">
+            {animationState.totalSteps > 0 ? `${animationState.currentStep + 1}/${animationState.totalSteps}` : '-'}
           </div>
-          
-          {/* 字符块 */}
-          <div className="flex gap-1">
-            {sds.buf.map((char, index) => {
-              const isUsed = index < sds.len;
-              const isTerminator = index === sds.len && char === '\0';
-              const isFree = index > sds.len;
-              const isHighlightedCell = currentStep?.target === `buf[${index}]`;
-              
-              let bgColor = 'bg-gray-100';
-              if (isTerminator) bgColor = 'bg-red-100';
-              else if (isUsed) bgColor = 'bg-green-100';
-              else if (isFree) bgColor = 'bg-gray-50';
-              
-              if (isHighlightedCell) bgColor = 'bg-yellow-200';
-              
+        </div>
+        <div className="bg-amber-50 border border-amber-200 rounded px-2 py-1">
+          <div className="text-slate-500">缩放</div>
+          <div className="font-semibold text-slate-800">{(transform.scale * 100).toFixed(0)}%</div>
+        </div>
+      </div>
+
+      {Object.keys(variables).length > 0 && (
+        <div className="mb-2 flex flex-wrap gap-1">
+          {Object.entries(variables).map(([name, value]) => (
+            <span key={name} className="inline-flex items-center gap-1 bg-slate-100 text-slate-700 text-[11px] px-2 py-0.5 rounded">
+              <strong>{name}</strong>
+              <span>=</span>
+              <span>{String(value)}</span>
+            </span>
+          ))}
+        </div>
+      )}
+
+      <div
+        ref={wrapperRef}
+        className="canvas-wrapper flex-1"
+        onWheel={(event) => {
+          event.preventDefault();
+          interactedRef.current = true;
+          const rect = event.currentTarget.getBoundingClientRect();
+          const cursorX = event.clientX - rect.left;
+          const cursorY = event.clientY - rect.top;
+
+          setTransform((prev) => {
+            const nextScale = clamp(event.deltaY < 0 ? prev.scale * 1.08 : prev.scale / 1.08, 0.4, 3);
+            const worldX = (cursorX - prev.x) / prev.scale;
+            const worldY = (cursorY - prev.y) / prev.scale;
+            return {
+              scale: nextScale,
+              x: cursorX - worldX * nextScale,
+              y: cursorY - worldY * nextScale,
+            };
+          });
+        }}
+        onMouseDown={(event) => {
+          if (event.button !== 0) return;
+          interactedRef.current = true;
+          setDragging(true);
+          dragRef.current = {
+            startX: event.clientX,
+            startY: event.clientY,
+            originX: transform.x,
+            originY: transform.y,
+          };
+        }}
+      >
+        <svg width="100%" height="100%">
+          <defs>
+            <marker
+              id="flow-arrow"
+              markerWidth="8"
+              markerHeight="8"
+              refX="7"
+              refY="4"
+              orient="auto-start-reverse"
+            >
+              <path d="M0,0 L8,4 L0,8 z" fill="#0F766E" />
+            </marker>
+          </defs>
+
+          <g transform={`translate(${transform.x}, ${transform.y}) scale(${transform.scale})`}>
+            <rect x={0} y={0} width={contentSize.width} height={contentSize.height} fill="#F8FAFC" rx={16} />
+
+            <text x={90} y={38} fontSize={14} fill="#334155" fontWeight={700}>
+              SDS Header + Buffer
+            </text>
+            <text x={260} y={38} fontSize={11} fill="#64748B">
+              拖动平移（{dragging ? '进行中' : '按住左键'}）
+            </text>
+            <g transform="translate(560, 24)">
+              <Move size={14} />
+            </g>
+
+            {(Object.keys(HEADER_BOXES) as Array<keyof typeof HEADER_BOXES>).map((key) => {
+              const box = HEADER_BOXES[key];
+              const active = isHeaderActive(key);
+              const value = key === 'len' ? sds.len : key === 'alloc' ? sds.alloc : sds.type;
+
               return (
-                <motion.div
-                  key={`char-${index}`}
-                  className={`flex-1 border-2 rounded p-2 text-center font-mono text-sm ${bgColor}`}
-                  style={{
-                    minWidth: '40px',
-                    maxWidth: '60px',
-                    borderColor: isHighlightedCell ? '#FFC107' : isTerminator ? '#F44336' : '#E0E0E0',
-                  }}
-                  animate={isHighlightedCell ? { scale: [1, 1.15, 1] } : {}}
-                  transition={{ duration: 0.3 }}
-                  whileHover={{ scale: 1.05 }}
-                >
-                  <div className="font-semibold">
-                    {char === '\0' ? '\\0' : char || '\u00A0'}
-                  </div>
-                </motion.div>
+                <g key={key}>
+                  <rect
+                    x={box.x}
+                    y={box.y}
+                    width={box.width}
+                    height={box.height}
+                    rx={10}
+                    fill={active ? '#DCFCE7' : '#FFFFFF'}
+                    stroke={active ? '#16A34A' : '#CBD5E1'}
+                    strokeWidth={active ? 2 : 1.5}
+                  />
+                  <text x={box.x + 14} y={box.y + 24} fontSize={12} fill="#64748B">
+                    {key}
+                  </text>
+                  <text x={box.x + 14} y={box.y + 58} fontSize={24} fill="#0F172A" fontWeight={700}>
+                    {String(value)}
+                  </text>
+                </g>
               );
             })}
-          </div>
-          
-          {/* 区域标注 */}
-          <div className="flex mt-2 gap-1">
-            <div className="flex-1" style={{ width: `${(sds.len / sds.buf.length) * 100}%` }}>
-              <div className="text-xs text-center text-green-600 font-medium">Used ({sds.len})</div>
-            </div>
-            <div className="flex-1" style={{ width: `${((sds.alloc - sds.len) / sds.buf.length) * 100}%` }}>
-              <div className="text-xs text-center text-gray-500 font-medium">
-                Free ({sds.alloc - sds.len})
-              </div>
-            </div>
-          </div>
-        </div>
+
+            <text x={BUFFER_START_X} y={BUFFER_START_Y - 20} fontSize={13} fill="#334155" fontWeight={600}>
+              Buffer ({sds.alloc + 1} bytes)
+            </text>
+
+            {sds.buf.map((char, index) => {
+              const pos = cellPosition(index);
+              const isUsed = index < sds.len;
+              const isTerminator = index === sds.len && char === '\\0';
+              const active = isCellActive(index);
+
+              return (
+                <AnimatedCell
+                  key={`cell-${index}-${char}`}
+                  index={index}
+                  x={pos.x}
+                  y={pos.y}
+                  char={char}
+                  isUsed={isUsed}
+                  isTerminator={isTerminator}
+                  isActive={active}
+                />
+              );
+            })}
+
+            {currentStep?.visual?.arrows?.map((arrow, index) => (
+              <AnimatedArrow
+                key={`arrow-${index}-${arrow.fromTarget}-${arrow.toTarget}`}
+                arrow={arrow}
+                index={index}
+                getTargetCenter={getTargetCenter}
+              />
+            ))}
+
+            {currentStep?.visual?.annotations?.map((annotation, index) => {
+              const point = getTargetCenter(annotation.target);
+              const yOffset = 20 + index * 18;
+
+              return (
+                <AnimatedAnnotation
+                  key={`annotation-${index}-${annotation.target}`}
+                  text={annotation.text}
+                  x={point.x}
+                  y={point.y - yOffset}
+                  tone={annotation.tone || 'info'}
+                  index={index}
+                />
+              );
+            })}
+          </g>
+        </svg>
       </div>
-      
-      {/* 统计信息 */}
-      <div className="mt-6 pt-6 border-t border-gray-200">
-        <div className="grid grid-cols-3 gap-4 text-sm">
-          <div>
-            <span className="text-gray-600">内存效率:</span>
-            <span className="ml-2 font-semibold text-gray-800">
-              {sds.alloc > 0 ? ((sds.len / sds.alloc) * 100).toFixed(1) : 0}%
-            </span>
-          </div>
-          <div>
-            <span className="text-gray-600">剩余空间:</span>
-            <span className="ml-2 font-semibold text-gray-800">
-              {sds.alloc - sds.len} bytes
-            </span>
-          </div>
-          <div>
-            <span className="text-gray-600">总内存:</span>
-            <span className="ml-2 font-semibold text-gray-800">
-              {sds.alloc + 1} bytes
-            </span>
-          </div>
-        </div>
+
+      <div className="mt-2 flex items-center justify-between text-[11px] text-slate-500">
+        <span>已用 {sds.len} / 分配 {sds.alloc}</span>
+        <span>空闲 {sds.alloc - sds.len} bytes</span>
       </div>
-    </div>
+    </section>
   );
 }

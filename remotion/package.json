@@ -1,0 +1,34 @@
+{
+  "name": "remotion",
+  "version": "1.0.0",
+  "description": "Remotion video project for Redis SDS animations",
+  "main": "index.js",
+  "scripts": {
+    "start": "remotion studio",
+    "preview": "remotion preview",
+    "render-a1": "remotion render SdsMemoryLayout ../public/videos/sds-memory-layout.mp4 --log=error",
+    "render-a2": "remotion render CStringVsSds ../public/videos/cstring-vs-sds.mp4 --log=error",
+    "render-a3": "remotion render PreAllocation ../public/videos/pre-allocation.mp4 --log=error",
+    "render-a4": "remotion render LazyFree ../public/videos/lazy-free.mp4 --log=error",
+    "render-a5": "remotion render TypeSwitching ../public/videos/type-switching.mp4 --log=error",
+    "render-a6": "remotion render BufferOverflow ../public/videos/buffer-overflow.mp4 --log=error",
+    "render-a7": "remotion render BinarySafe ../public/videos/binary-safe.mp4 --log=error",
+    "render-a8": "remotion render SdsNewOperation ../public/videos/sdsnew-operation.mp4 --log=error",
+    "render-a9": "remotion render SdscatOperation ../public/videos/sdscat-operation.mp4 --log=error",
+    "render-a10": "remotion render MakeRoomFor ../public/videos/make-room-for.mp4 --log=error",
+    "render-a11": "remotion render TypeSelection ../public/videos/type-selection.mp4 --log=error",
+    "render-a12": "remotion render HeroIntro ../public/videos/hero-intro.mp4 --log=error",
+    "render-all": "npm run render-a1 && npm run render-a2 && npm run render-a3 && npm run render-a4 && npm run render-a5 && npm run render-a6 && npm run render-a7 && npm run render-a8 && npm run render-a9 && npm run render-a10 && npm run render-a11 && npm run render-a12",
+    "build-sds-intro": "remotion render SdsIntro out/sds-intro.mp4 --log=error"
+  },
+  "keywords": ["remotion", "animation", "redis", "sds"],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@remotion/bundler": "^4.0.438",
+    "@remotion/cli": "^4.0.438",
+    "@remotion/video": "^4.0.350",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4"
+  }
+}

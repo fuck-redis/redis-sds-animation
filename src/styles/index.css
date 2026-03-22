@@ -2,28 +2,26 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Custom scrollbar */
+/* Scrollbar */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
-
 ::-webkit-scrollbar-track {
-  @apply bg-gray-100;
+  background: #f1f5f9;
 }
-
 ::-webkit-scrollbar-thumb {
-  @apply bg-gray-400 rounded;
+  background: #94a3b8;
+  border-radius: 999px;
 }
-
 ::-webkit-scrollbar-thumb:hover {
-  @apply bg-gray-500;
+  background: #64748b;
 }
 
-/* Animation utilities */
+/* Notifications */
 @keyframes slideIn {
   from {
-    transform: translateX(100%);
+    transform: translateX(16px);
     opacity: 0;
   }
   to {
@@ -31,19 +29,110 @@
     opacity: 1;
   }
 }
-
 .animate-slide-in {
-  animation: slideIn 0.3s ease-out;
+  animation: slideIn 0.25s ease-out;
 }
 
-/* Code font */
-.font-mono {
-  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', 'source-code-pro', monospace;
+/* Playback controls */
+.control-btn {
+  @apply inline-flex items-center justify-center gap-1 rounded border border-slate-200 bg-slate-50 text-slate-700 px-2 py-1.5 text-xs hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed;
+}
+.control-btn-primary {
+  @apply border-emerald-600 bg-emerald-600 text-white hover:bg-emerald-700;
 }
 
-/* Smooth transitions */
-* {
-  @apply transition-colors duration-150;
+/* Timeline */
+.timeline-wrap {
+  @apply w-full;
+}
+.timeline-meta {
+  @apply flex items-center justify-between text-[11px] text-slate-600 mb-1;
+}
+.timeline-track {
+  @apply relative h-3 rounded-full bg-slate-200 cursor-pointer select-none;
+}
+.timeline-progress {
+  @apply h-3 rounded-full bg-emerald-500 relative;
+}
+.timeline-thumb {
+  @apply absolute right-0 top-1/2 -translate-y-1/2 translate-x-1/2 w-4 h-4 rounded-full bg-emerald-700 border-2 border-white shadow;
+}
+.timeline-empty {
+  @apply text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded px-2 py-1;
+}
+
+/* Code debugger */
+.code-debugger {
+  background: #0b1220;
+}
+.code-row {
+  display: grid;
+  grid-template-columns: 42px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 24px;
+  padding: 0 8px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.08);
+}
+.code-row-active {
+  background: rgba(16, 185, 129, 0.14);
+}
+.line-no {
+  color: #64748b;
+  text-align: right;
+  user-select: none;
+}
+.line-content {
+  color: #dbeafe;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.line-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.line-badge {
+  font-size: 10px;
+  color: #064e3b;
+  background: #d1fae5;
+  border: 1px solid #6ee7b7;
+  border-radius: 999px;
+  padding: 1px 6px;
+}
+
+/* Syntax colors */
+.syntax-plain {
+  color: #dbeafe;
+}
+.syntax-keyword {
+  color: #22d3ee;
+  font-weight: 600;
+}
+.syntax-string {
+  color: #86efac;
+}
+.syntax-comment {
+  color: #94a3b8;
+  font-style: italic;
+}
+.syntax-number {
+  color: #fbbf24;
+}
+.syntax-function {
+  color: #67e8f9;
+}
+
+/* Canvas */
+.canvas-wrapper {
+  @apply relative border border-slate-200 rounded-lg bg-slate-100 overflow-hidden;
+  cursor: grab;
+}
+.canvas-wrapper:active {
+  cursor: grabbing;
+}
+.canvas-tool-btn {
+  @apply inline-flex items-center justify-center rounded border border-slate-300 bg-white text-slate-700 p-1.5 hover:bg-slate-50;
 }
 
 /* Focus styles */
@@ -51,30 +140,50 @@ button:focus,
 input:focus,
 select:focus,
 textarea:focus {
-  @apply outline-none ring-2 ring-offset-2 ring-blue-500;
+  outline: none;
 }
 
-/* Disabled state */
-button:disabled,
-input:disabled,
-select:disabled,
-textarea:disabled {
-  @apply cursor-not-allowed opacity-60;
-}
-
-/* Selection */
-::selection {
-  @apply bg-blue-200;
-}
-
-/* Print styles */
-@media print {
-  .no-print {
-    display: none !important;
+/* Glow animations for highlighting */
+@keyframes pulse-glow {
+  0%, 100% {
+    filter: drop-shadow(0 0 4px rgba(245, 158, 11, 0.4));
+  }
+  50% {
+    filter: drop-shadow(0 0 12px rgba(245, 158, 11, 0.8));
   }
 }
 
-/* Dark mode support (optional) */
-@media (prefers-color-scheme: dark) {
-  /* Add dark mode styles if needed */
+.pulse-glow {
+  animation: pulse-glow 1.5s ease-in-out infinite;
+}
+
+/* New cell highlight */
+@keyframes new-cell-flash {
+  0%, 100% {
+    background-color: #FEF3C7;
+  }
+  50% {
+    background-color: #FDE68A;
+  }
+}
+
+.new-cell-highlight {
+  animation: new-cell-flash 0.8s ease-in-out 3;
+}
+
+/* Copy trail effect */
+@keyframes copy-trail {
+  0% {
+    stroke-dashoffset: 20;
+    opacity: 1;
+  }
+  100% {
+    stroke-dashoffset: 0;
+    opacity: 0;
+  }
+}
+
+.copy-trail {
+  stroke-dasharray: 4;
+  animation: copy-trail 0.4s ease-out forwards;
 }

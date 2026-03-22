@@ -16,13 +16,13 @@ export function useAnimationPlayer() {
     stopAnimation,
   } = useStore();
   
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   
   // 自动播放动画
   useEffect(() => {
     if (!animationState.isPlaying || animationState.steps.length === 0) {
       if (timerRef.current) {
-        clearInterval(timerRef.current);
+        clearTimeout(timerRef.current);
         timerRef.current = null;
       }
       return;
