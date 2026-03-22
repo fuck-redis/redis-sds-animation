@@ -1,4 +1,4 @@
-import { createBrowserRouter } from 'react-router-dom';
+import { createHashRouter } from 'react-router-dom';
 import { Layout } from '../components/layout/Layout';
 import { HomePage } from '../pages/HomePage';
 import { IntroductionPage } from '../pages/IntroductionPage';
@@ -13,7 +13,7 @@ import { LazyFreePage } from '../pages/LazyFreePage';
 import { TypeSwitchingPage } from '../pages/TypeSwitchingPage';
 import { DemoPage } from '../pages/DemoPage';
 
-export const router = createBrowserRouter([
+export const router = createHashRouter([
   {
     path: '/',
     element: <Layout />,

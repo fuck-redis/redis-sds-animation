@@ -6,8 +6,8 @@ const repoName = 'redis-sds-animation';
 
 // https://vitejs.dev/config/
 export default defineConfig({
-  // GitHub Pages 部署时使用 /redis-sds-animation/ 作为 base 路径
-  base: `/${repoName}/`,
+  // 开发环境使用 /，生产环境使用 HashRouter 不需要 base
+  base: '/',
   plugins: [react()],
   resolve: {
     alias: {
